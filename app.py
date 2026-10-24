@@ -4,8 +4,11 @@ from __future__ import annotations
 
 import tempfile
 import uuid
+from io import BytesIO
 from pathlib import Path
 
+from openpyxl import load_workbook
+from openpyxl.utils import get_column_letter
 import streamlit as st
 
 from plate_reformatter import (
@@ -355,6 +358,46 @@ if result is not None:
         st.warning("Review these details against the source workbook:")
         for warning in result["warnings"]:
             st.markdown(f"- {warning}")
+
+    st.subheader("Preview workbook contents")
+    st.caption(
+        "Review every output sheet below before downloading. The preview shows "
+        "cell contents; Excel formatting may look different here."
+    )
+    try:
+        preview_workbook = load_workbook(
+            BytesIO(result["bytes"]), data_only=True, read_only=True
+        )
+        preview_tabs = st.tabs(preview_workbook.sheetnames)
+        for preview_tab, sheet_name in zip(preview_tabs, preview_workbook.sheetnames):
+            with preview_tab:
+                worksheet = preview_workbook[sheet_name]
+                last_row = max(worksheet.max_row, 1)
+                last_column = max(worksheet.max_column, 1)
+                column_names = [get_column_letter(index) for index in range(1, last_column + 1)]
+                preview_rows = []
+                for row_number in range(1, last_row + 1):
+                    row = {"Excel row": row_number}
+                    for column_number, column_name in enumerate(column_names, start=1):
+                        value = worksheet.cell(row=row_number, column=column_number).value
+                        row[column_name] = "" if value is None else value
+                    preview_rows.append(row)
+                st.dataframe(
+                    preview_rows,
+                    width="stretch",
+                    height="content",
+                    hide_index=True,
+                    alt=f"{sheet_name} worksheet contents",
+                )
+        preview_workbook.close()
+    except Exception as exc:
+        st.warning(
+            "The workbook was created, but its contents could not be previewed. "
+            "You can still download and review the file in Excel."
+        )
+        with st.expander("Preview technical details"):
+            st.code(f"{type(exc).__name__}: {exc}")
+
     st.download_button(
         "Download reformatted workbook",
         data=result["bytes"],

@@ -13,6 +13,8 @@ FEATURES
 - Enter a plate name and create an .xlsx output named StudyNumber_PlateName.xlsx.
 - See missing-data prompts, warnings, a short processing indicator, and a
   downloadable result.
+- Preview every output worksheet's cell contents in separate tabs before
+  downloading. The preview includes all rows; Excel formatting may differ.
 - Correct missing information per well. The app previews original and corrected
   entries side by side before making the workbook.
 - Keep identical sample entries together only when they are horizontally
@@ -185,57 +187,3 @@ KNOWN LIMITATIONS AND REVIEW
   exact expected results for every input.
 - The output is a review aid, not a laboratory decision system. Check each
   generated workbook against its original before use.
-
-FINAL PROJECT EVALUATION
-------------------------
-Problem and intended users
-The project addresses the time and transcription risk involved in manually
-reformatting 96-well plate maps and transferring sample details into a lookup.
-It is intended for students and laboratory staff who need a consistent,
-reviewable Excel output from a supported plate workbook.
-
-Application and capabilities
-The final application is a single-page Streamlit app. It accepts .xlsx and
-legacy .xls files, asks for a plate name, creates a formatted .xlsx plate map
-and lookup, and offers the result for download. It keeps horizontally adjacent
-identical sample entries together, recalculates labels after corrections,
-prompts users to complete missing metadata, and asks for review before creating
-a workbook when duplicate lookup groups are found. Processing warnings and
-manual corrections are recorded in Review Notes when applicable.
-
-Build environment and tools
-The local check environment used Windows with Python 3.14.7, Streamlit 1.66.1,
-openpyxl 3.1.5, and xlrd 2.0.2. These versions describe that environment; the
-requirements file remains flexible and does not pin them. Python runs the
-processing logic; Streamlit provides the web interface; openpyxl writes .xlsx
-output; xlrd reads legacy .xls input. The project also includes a Windows
-launcher, an audit helper, and a three-minute demonstration plan.
-
-Testing performed and actual results
-- The supplied Workbook 2 (.xls) was inspected after the parser update. The app
-  identified study number 34567891 and reported no missing metadata or layout
-  warnings. Its multiword Matrix/Split value was recognized as metadata.
-- The supplied Workbook 7 was corrected using the user-provided entries for
-  wells F4 and G10, then the workbook was regenerated. No expected output file
-  was supplied for an exact cell-by-cell comparison.
-- The source files supplied by the user were used for workbook processing; no
-  synthetic workbooks were created. Because expected output workbooks were not
-  provided, exact output accuracy for every well and formatting detail remains
-  subject to review against each original source.
-
-Known limitations and failure modes
-The app expects one recognizable 96-well plate on the active .xlsx sheet or
-first .xls sheet. Unusual layouts may produce warnings and need human review.
-Missing or ambiguous metadata requires a user correction. The app does not
-compare source sample-well totals with output assignments, and no expected
-workbooks are available for automated exact-result comparison. Users should
-check every output against its source before using it.
-
-Improvements made and future work
-The project added a Streamlit upload-and-download interface, legacy .xls
-support, clearer missing-data corrections, correction previews, warning and
-Review Notes handling, preservation of source-displayed test periods, and
-approval checks for repeated lookup details. Further work could add a broader
-automated audit against instructor-approved expected results, test more unusual
-worksheet layouts, and publish the app only after choosing an approved hosting
-and privacy approach. The app has not been published.
