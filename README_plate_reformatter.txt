@@ -13,8 +13,9 @@ FEATURES
 - Enter a plate name and create an .xlsx output named StudyNumber_PlateName.xlsx.
 - See missing-data prompts, warnings, a short processing indicator, and a
   downloadable result.
-- Preview every output worksheet's cell contents in separate tabs before
-  downloading. The preview includes all rows; Excel formatting may differ.
+- Preview every output worksheet in separate tabs before downloading. The
+  preview includes all rows, Excel row and column headings, and common saved
+  cell styles such as fills, fonts, borders, merged cells, and dimensions.
 - Correct missing information per well. The app previews original and corrected
   entries side by side before making the workbook.
 - Keep identical sample entries together only when they are horizontally

@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import html
+import re
 import tempfile
 import uuid
 from io import BytesIO
@@ -15,6 +17,156 @@ from plate_reformatter import (
     complete_source_entry, find_duplicate_lookup_groups, inspect_workbook,
     is_numeric_value, reformat, source_entry_issues,
 )
+
+
+def _excel_color(color):
+    """Return an HTML-safe RGB color for common Excel colors."""
+    if color is None:
+        return None
+    if color.type == "rgb" and color.rgb:
+        return f"#{color.rgb[-6:]}"
+    if color.type == "indexed" and color.indexed is not None:
+        try:
+            from openpyxl.styles.colors import COLOR_INDEX
+
+            return f"#{COLOR_INDEX[color.indexed][-6:]}"
+        except (IndexError, TypeError):
+            return None
+    return None
+
+
+def _excel_border(side):
+    """Convert a saved Excel border side to a small CSS border declaration."""
+    if side is None or side.style is None:
+        return None
+    css_style = {
+        "dashDot": "dashed", "dashDotDot": "dashed", "dashed": "dashed",
+        "dotted": "dotted", "double": "double", "hair": "solid",
+        "medium": "solid", "mediumDashDot": "dashed",
+        "mediumDashDotDot": "dashed", "mediumDashed": "dashed",
+        "slantDashDot": "dashed", "thin": "solid", "thick": "solid",
+    }.get(side.style, "solid")
+    css_width = "2px" if side.style in {"medium", "mediumDashed", "mediumDashDot", "mediumDashDotDot"} else "3px" if side.style == "thick" else "1px"
+    return f"{css_width} {css_style} {_excel_color(side.color) or '#000000'}"
+
+
+def _worksheet_preview_html(worksheet):
+    """Render worksheet values and common cell formatting as an Excel-like grid."""
+    max_row = max(worksheet.max_row, 1)
+    max_column = max(worksheet.max_column, 1)
+    column_names = [get_column_letter(column) for column in range(1, max_column + 1)]
+    default_gridlines = worksheet.sheet_view.showGridLines is not False
+    merged_anchors = {}
+    merged_covered = set()
+    for merged_range in worksheet.merged_cells.ranges:
+        merged_anchors[(merged_range.min_row, merged_range.min_col)] = (
+            merged_range.max_row - merged_range.min_row + 1,
+            merged_range.max_col - merged_range.min_col + 1,
+        )
+        for row in range(merged_range.min_row, merged_range.max_row + 1):
+            for column in range(merged_range.min_col, merged_range.max_col + 1):
+                if (row, column) != (merged_range.min_row, merged_range.min_col):
+                    merged_covered.add((row, column))
+
+    widths = []
+    for column_name in column_names:
+        width = worksheet.column_dimensions[column_name].width or 8.43
+        widths.append(max(32, min(600, round(width * 7 + 5))))
+
+    parts = [
+        '<div class="excel-preview-scroll">',
+        '<table class="excel-preview-grid" aria-label="',
+        html.escape(f"{worksheet.title} worksheet preview", quote=True),
+        '"><colgroup><col style="width:46px">',
+    ]
+    parts.extend(f'<col style="width:{width}px">' for width in widths)
+    parts.append('</colgroup><thead><tr><th class="excel-preview-corner"></th>')
+    parts.extend(
+        f'<th class="excel-preview-column-heading">{column_name}</th>'
+        for column_name in column_names
+    )
+    parts.append('</tr></thead><tbody>')
+
+    for row_number in range(1, max_row + 1):
+        row_height = worksheet.row_dimensions[row_number].height
+        row_height_px = max(20, round((row_height or 15) * 4 / 3))
+        parts.append(f'<tr style="height:{row_height_px}px"><th class="excel-preview-row-heading">{row_number}</th>')
+        for column_number in range(1, max_column + 1):
+            if (row_number, column_number) in merged_covered:
+                continue
+            cell = worksheet.cell(row=row_number, column=column_number)
+            styles = ["padding:3px 6px", "min-width:32px", "vertical-align:middle"]
+            if default_gridlines:
+                styles.append("border:1px solid #d9d9d9")
+
+            fill = cell.fill
+            if fill.fill_type == "solid":
+                fill_color = _excel_color(fill.fgColor)
+                if fill_color:
+                    styles.append(f"background-color:{fill_color}")
+
+            font = cell.font
+            if font.name:
+                family = re.sub(r"[^A-Za-z0-9 ,_-]", "", font.name)
+                if family:
+                    styles.append(f"font-family:'{family}',Arial,sans-serif")
+            if font.sz:
+                styles.append(f"font-size:{max(7, min(36, font.sz))}pt")
+            if font.bold:
+                styles.append("font-weight:bold")
+            if font.italic:
+                styles.append("font-style:italic")
+            decorations = []
+            if font.underline:
+                decorations.append("underline")
+            if font.strike:
+                decorations.append("line-through")
+            if decorations:
+                styles.append(f"text-decoration:{' '.join(decorations)}")
+            font_color = _excel_color(font.color)
+            if font_color:
+                styles.append(f"color:{font_color}")
+
+            alignment = cell.alignment
+            if alignment.horizontal in {"left", "center", "right", "justify"}:
+                styles.append(f"text-align:{alignment.horizontal}")
+            if alignment.vertical in {"top", "center", "bottom"}:
+                vertical = "middle" if alignment.vertical == "center" else alignment.vertical
+                styles.append(f"vertical-align:{vertical}")
+            styles.append("white-space:pre-wrap" if alignment.wrap_text else "white-space:pre")
+
+            border = cell.border
+            for side_name, css_name in (
+                ("left", "border-left"), ("right", "border-right"),
+                ("top", "border-top"), ("bottom", "border-bottom"),
+            ):
+                declaration = _excel_border(getattr(border, side_name))
+                if declaration:
+                    styles.append(f"{css_name}:{declaration}")
+
+            row_span, col_span = merged_anchors.get((row_number, column_number), (1, 1))
+            span_attributes = ""
+            if row_span > 1:
+                span_attributes += f' rowspan="{row_span}"'
+            if col_span > 1:
+                span_attributes += f' colspan="{col_span}"'
+            value = "" if cell.value is None else str(cell.value)
+            display_value = html.escape(value, quote=False).replace("\n", "<br>") or "&nbsp;"
+            parts.append(
+                f'<td{span_attributes} style="{";".join(styles)}">{display_value}</td>'
+            )
+        parts.append('</tr>')
+    parts.append('</tbody></table></div>')
+    parts.insert(0, """<style>
+      .excel-preview-scroll { max-width:100%; max-height:72vh; overflow:auto; border:1px solid #b7b7b7; background:#fff; }
+      .excel-preview-grid { border-collapse:collapse; table-layout:fixed; color:#000; background:#fff; font-family:Arial,sans-serif; font-size:11pt; }
+      .excel-preview-grid th { position:sticky; z-index:2; padding:3px 5px; border:1px solid #b7b7b7; background:#f3f3f3; color:#333; font:10pt Arial,sans-serif; text-align:center; }
+      .excel-preview-grid thead th { top:0; z-index:3; }
+      .excel-preview-grid th.excel-preview-row-heading { left:0; z-index:2; min-width:46px; font-weight:normal; }
+      .excel-preview-grid th.excel-preview-corner { top:0; left:0; z-index:4; min-width:46px; }
+      .excel-preview-grid td { box-sizing:border-box; overflow-wrap:anywhere; }
+    </style>""")
+    return "".join(parts)
 
 
 st.set_page_config(page_title="96-Well Plate Map Reformatter", page_icon="🧪")
@@ -361,34 +513,18 @@ if result is not None:
 
     st.subheader("Preview workbook contents")
     st.caption(
-        "Review every output sheet below before downloading. The preview shows "
-        "cell contents; Excel formatting may look different here."
+        "Review every output sheet below before downloading. The preview carries "
+        "over the workbook's cell styles and uses a scrollable Excel-like grid."
     )
     try:
         preview_workbook = load_workbook(
-            BytesIO(result["bytes"]), data_only=True, read_only=True
+            BytesIO(result["bytes"]), data_only=True, read_only=False
         )
         preview_tabs = st.tabs(preview_workbook.sheetnames)
         for preview_tab, sheet_name in zip(preview_tabs, preview_workbook.sheetnames):
             with preview_tab:
                 worksheet = preview_workbook[sheet_name]
-                last_row = max(worksheet.max_row, 1)
-                last_column = max(worksheet.max_column, 1)
-                column_names = [get_column_letter(index) for index in range(1, last_column + 1)]
-                preview_rows = []
-                for row_number in range(1, last_row + 1):
-                    row = {"Excel row": row_number}
-                    for column_number, column_name in enumerate(column_names, start=1):
-                        value = worksheet.cell(row=row_number, column=column_number).value
-                        row[column_name] = "" if value is None else value
-                    preview_rows.append(row)
-                st.dataframe(
-                    preview_rows,
-                    width="stretch",
-                    height="content",
-                    hide_index=True,
-                    alt=f"{sheet_name} worksheet contents",
-                )
+                st.markdown(_worksheet_preview_html(worksheet), unsafe_allow_html=True)
         preview_workbook.close()
     except Exception as exc:
         st.warning(
