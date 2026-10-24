@@ -14,8 +14,6 @@ a reformatted .xlsx workbook beside the source workbook.
 
 import re
 import math
-import tkinter as tk
-from tkinter import filedialog, simpledialog, messagebox
 from pathlib import Path
 from collections import OrderedDict
 import shutil
@@ -1053,6 +1051,17 @@ def reformat(
 
 
 def main():
+    # Tkinter is only needed by the optional desktop file-picker. Keep it out
+    # of module imports so the Streamlit app can run on headless Linux hosts.
+    try:
+        import tkinter as tk
+        from tkinter import filedialog, simpledialog, messagebox
+    except ImportError as exc:
+        raise SystemExit(
+            "The desktop file-picker requires Tkinter, which is unavailable in "
+            "this Python installation. To use the web app, run 'streamlit run app.py'."
+        ) from exc
+
     root = tk.Tk()
     root.withdraw()
     root.update()

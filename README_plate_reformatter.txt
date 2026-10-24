@@ -161,6 +161,16 @@ private apps and viewer access. Do not commit supplied Excel files or generated
 workbooks to GitHub. Neither hosting option has been published or set up for
 instructor access.
 
+DEPLOYMENT TROUBLESHOOTING
+-------------------------
+If Streamlit Cloud shows `ImportError` mentioning `_tkinter`, check that the
+latest `plate_reformatter.py` has been pushed to the GitHub repository. The
+desktop file-picker imports Tkinter only when the desktop entry point runs;
+the Streamlit app does not need Tkinter. Do not add `tkinter` to
+`requirements.txt`: it is part of some desktop Python installations, not a
+package needed by the hosted web app. After pushing the updated file, wait for
+Streamlit Cloud to redeploy and check **Manage app** logs if startup still fails.
+
 KNOWN LIMITATIONS AND REVIEW
 ----------------------------
 - The app reads one worksheet (active .xlsx sheet or first .xls sheet) and
